@@ -14,7 +14,7 @@ Two things are needed:
 - [x] Match image normalization to the chosen image encoder
 - [x] Check input requirements of the chosen audio encoder
 - [ ] Config wandb
-- [ ] Implement Visual Encoder (idk)
+- [x] Implement Visual Encoder (CLIP and DINOv2)
 - [x] Implement Audio Encoder (HuBERT)
 - [ ] Training with wandb
 - [ ] Experiments
