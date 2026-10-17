@@ -2,7 +2,7 @@
 
 ## Data
 
-Three things are needed:
+Two things are needed:
 
 1. **SpokenCOCO**: spoken captions (wav files) and JSON metadata (`SpokenCOCO.tar.gz` from the authors, MIT).
 2. **MS-COCO 2014 images** (`train2014`, `val2014`): downloaded separately, not included in SpokenCOCO.
@@ -15,7 +15,7 @@ Three things are needed:
 - [x] Check input requirements of the chosen audio encoder
 - [ ] Config wandb
 - [ ] Implement Visual Encoder (idk)
-- [ ] Implement Audio Encoder (HuBERT)
+- [x] Implement Audio Encoder (HuBERT)
 - [ ] Training with wandb
 - [ ] Experiments
 - [ ] Visalisation
