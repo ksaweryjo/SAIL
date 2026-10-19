@@ -9,6 +9,8 @@ logs/
 *.log
 *.out
 sbatch_*
+pytest.ini
+.pytest_cache/
 
 # MacOS
 .DS_Store
