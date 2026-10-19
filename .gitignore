@@ -2,12 +2,15 @@
 __pycache__/
 checkpoints/
 wandb/
+tests/
 checkpoints/
 data/
 logs/
 *.log
 *.out
 sbatch_*
+pytest.ini
+.pytest_cache/
 
 # MacOS
 .DS_Store
