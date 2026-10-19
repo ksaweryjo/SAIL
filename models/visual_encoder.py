@@ -10,18 +10,22 @@ class VisualEncoder(nn.Module):
             self.model = Dinov2Model.from_pretrained("facebook/dinov2-base")
             self.feature_dim = self.model.config.hidden_size
         elif model_name == "clip":
-            self.model = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch16")
+            self.model = CLIPVisionModelWithProjection.from_pretrained(
+                "openai/clip-vit-base-patch16"
+            )
             self.feature_dim = self.model.config.projection_dim
         else:
             raise ValueError(f"Unknown model name: {model_name}")
-        
+
     def freeze_backbone(self) -> None:
         for p in self.model.parameters():
             p.requires_grad = False
-            
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if isinstance(self.model, Dinov2Model):
-            return self.model(x).last_hidden_state[:, 0]  # Use the CLS token representation
+            return self.model(x).last_hidden_state[
+                :, 0
+            ]  # Use the CLS token representation
         elif isinstance(self.model, CLIPVisionModelWithProjection):
             return self.model(x).image_embeds
         else:
