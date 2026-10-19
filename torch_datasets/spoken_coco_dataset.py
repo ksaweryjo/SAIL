@@ -43,7 +43,7 @@ class SpokenCocoDataset(Dataset):
                 if wav_name.parts[0] == "wavs":
                     wav_name = Path(*wav_name.parts[1:])
 
-                if wav_name.parts and wav_name.parts[0] == "val" or wav_name.parts[0] == "train" or wav_name.parts[0] == "test":
+                if wav_name.parts and wav_name.parts[0] in {"val", "train", "test"}:
                     wav_name = Path(*wav_name.parts[1:])
 
                 self.data.append((img_path, audio_dir / wav_name, cap["text"]))
