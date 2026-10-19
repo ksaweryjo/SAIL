@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from audio_encoder import AudioEncoder
-from projections import ProjectionHead
-from visual_encoder import VisualEncoder
+
+from models.audio_encoder import AudioEncoder
+from models.projections import ProjectionHead
+from models.visual_encoder import VisualEncoder
 
 
 class ContrastiveModel(nn.Module):
