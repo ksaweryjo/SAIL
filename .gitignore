@@ -2,6 +2,7 @@
 __pycache__/
 checkpoints/
 wandb/
+tests/
 checkpoints/
 data/
 logs/
