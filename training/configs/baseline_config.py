@@ -41,7 +41,8 @@ class Config:
     # Training
     epochs: int = 10
     batch_size: int = 256
-    use_fp16: bool = True
+    use_amp: bool = True # we will default to bf16
+    # d_type: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     learn_temperature: bool = True
     init_temperature: float = 0.07
