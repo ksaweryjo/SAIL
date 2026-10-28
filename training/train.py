@@ -4,10 +4,10 @@ from dataclasses import asdict
 from itertools import chain
 
 import torch
+import wandb
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
-import wandb
 from models.contrastive_model import ContrastiveModel
 from torch_datasets.spoken_coco_dataset import SpokenCocoDataset
 from torch_datasets.transforms import (

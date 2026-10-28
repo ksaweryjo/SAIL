@@ -3,11 +3,11 @@ import time
 
 import torch
 import torch.nn.functional as F
+import wandb
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from wandb.sdk.wandb_run import Run
 
-import wandb
 from models.contrastive_model import ContrastiveModel
 from training.checkpointing import save_checkpoint
 from training.configs.baseline_config import Config
