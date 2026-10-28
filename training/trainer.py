@@ -58,10 +58,12 @@ class Trainer:
     def _wandb_run(self) -> Run | None:
         return wandb.run if self.use_wandb else None
 
-    def _to_device(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def _to_device(self, batch: list) -> dict[str, torch.Tensor]:
+        img, audio, length, text = batch
+
         return {
-            "img": batch["img"].to(self.device, non_blocking=True),
-            "audio": batch["audio"].to(self.device, non_blocking=True),
+            "img": img.to(self.device, non_blocking=True),
+            "audio": audio.to(self.device, non_blocking=True),
         }
 
     def _forward(
@@ -72,7 +74,7 @@ class Trainer:
             dtype=torch.bfloat16,
             enabled=self.amp_enabled,
         ):
-            audio_emb, img_emb = self.model(img, audio)
+            img_emb, audio_emb = self.model(img, audio)
 
         audio_emb = audio_emb.float()
         img_emb = img_emb.float()
