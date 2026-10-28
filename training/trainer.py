@@ -1,10 +1,12 @@
 import math
 import time
-from typing import Any
 
 import torch
 import torch.nn.functional as F
+import wandb
+from torch.utils.data import DataLoader
 from tqdm import tqdm
+from wandb.sdk.wandb_run import Run
 
 from models.contrastive_model import ContrastiveModel
 from training.checkpointing import save_checkpoint
@@ -42,25 +44,21 @@ class Trainer:
         self.global_step = 0
 
         self.use_wandb = config.use_wandb
-        self.wandb: Any = None
         if self.use_wandb:
-            import wandb
-
-            self.wandb = wandb
             wandb.define_metric("global_step")
             wandb.define_metric("epoch")
             wandb.define_metric("train/*", step_metric="global_step")
             wandb.define_metric("train/epoch_loss", step_metric="epoch")
             wandb.define_metric("val/*", step_metric="epoch")
 
-    def _log(self, metrics: dict) -> None:
-        if self.wandb is not None:
-            self.wandb.log(metrics)
+    def _log(self, metrics: dict[str, float | int]) -> None:
+        if self.use_wandb:
+            wandb.log(metrics)
 
-    def _wandb_run(self) -> Any:
-        return self.wandb.run if self.wandb is not None else None
+    def _wandb_run(self) -> Run | None:
+        return wandb.run if self.use_wandb else None
 
-    def _to_device(self, batch: dict) -> dict:
+    def _to_device(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         return {
             "img": batch["img"].to(self.device, non_blocking=True),
             "audio": batch["audio"].to(self.device, non_blocking=True),
@@ -106,9 +104,7 @@ class Trainer:
                 metrics[f"val/recall_{name}@{k}"] = hits.float().mean().item()
         return metrics
 
-    def train_one_epoch(
-        self, train_loader: torch.utils.data.DataLoader, epoch: int
-    ) -> float:
+    def train_one_epoch(self, train_loader: DataLoader, epoch: int) -> float:
         self.model.train()
         self.criterion.train()
         total_loss = torch.zeros((), device=self.device)
@@ -156,13 +152,14 @@ class Trainer:
 
     @torch.no_grad()
     def validate_one_epoch(
-        self, val_loader: torch.utils.data.DataLoader, epoch: int
+        self, val_loader: DataLoader, epoch: int
     ) -> dict[str, float]:
         self.model.eval()
         self.criterion.eval()
         total_loss = torch.zeros((), device=self.device)
         n = 0
-        aud_embs, img_embs = [], []
+        aud_embs: list[torch.Tensor] = []
+        img_embs: list[torch.Tensor] = []
 
         for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]", leave=False):
             batch = self._to_device(batch)
@@ -179,11 +176,7 @@ class Trainer:
         metrics["val/loss"] = (total_loss / max(n, 1)).item()
         return metrics
 
-    def fit(
-        self,
-        train_loader: torch.utils.data.DataLoader,
-        val_loader: torch.utils.data.DataLoader,
-    ) -> None:
+    def fit(self, train_loader: DataLoader, val_loader: DataLoader) -> None:
         self.global_step = (self.start_epoch - 1) * len(train_loader)
 
         for epoch in range(self.start_epoch, self.config.epochs + 1):
@@ -225,6 +218,7 @@ class Trainer:
                         else None
                     ),
                     "val_loss": val_loss,
+                    "best_val_loss": self.best_val_loss,
                     "wandb_run_id": run.id if run is not None else None,
                 },
                 checkpoint_dir=self.config.checkpoint_dir,
