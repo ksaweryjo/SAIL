@@ -59,5 +59,8 @@ class Config:
 
     # Logging
     use_wandb: bool = True
+    log_every_n_steps: int = 50
     wandb_entity: str = "hush-ai"
     wandb_project: str = "Speech-To-Image-SAIL"
+    
+    grad_clip_norm: Optional[float] = 1.0
