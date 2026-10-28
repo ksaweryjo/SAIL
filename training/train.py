@@ -1,13 +1,13 @@
 import argparse
 import importlib
+from dataclasses import asdict
 from itertools import chain
 
 import torch
-from checkpointing import load_checkpoint
-from loss import InfoNCE_Loss
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
+import wandb
 from models.contrastive_model import ContrastiveModel
 from torch_datasets.spoken_coco_dataset import SpokenCocoDataset
 from torch_datasets.transforms import (
@@ -16,7 +16,10 @@ from torch_datasets.transforms import (
     Img_TrainTransform,
     Img_ValTransform,
 )
+from training.checkpointing import load_checkpoint, read_wandb_run_id
 from training.configs.baseline_config import Config
+from training.loss import InfoNCE_Loss
+from training.trainer import Trainer
 
 
 def get_config(name: str) -> Config:
@@ -29,7 +32,6 @@ def get_config(name: str) -> Config:
                 return config_cls()
             elif isinstance(config_cls, Config):
                 return config_cls
-        print(f"Using config: {name}")
     except (ImportError, AttributeError) as e:
         print(f"Error loading config {name}: {e}")
         print("Using default Config")
@@ -171,24 +173,57 @@ def resume_from_checkpoint(
         scheduler=scheduler,
     )
     model.to(device)
-    print(f"Resumed from epoch {epoch}, val_loss: {val_loss:.4f}")
+    print(f"Resumed from epoch {epoch}, best_val_loss: {val_loss:.4f}")
     return epoch + 1, val_loss
+
+
+def init_wandb(config: Config, resume_run_id: str | None) -> None:
+    if not config.use_wandb:
+        return
+    wandb.init(
+        name=config.name,
+        entity=config.wandb_entity,
+        project=config.wandb_project,
+        config=asdict(config),
+        id=resume_run_id,
+        resume="allow",
+    )
 
 
 def main() -> None:
     args = parse_args()
     config = get_config(args.config)
-    train_loader, val_loader = build_dataloader(config)
-    model = build_model(config)
-    criterion = build_criterion(config)
-    optimizer = build_optimizer(config, model, criterion)
-    scheduler = build_scheduler(optimizer, config, len(train_loader))
-    if args.resume is not None:
-        start_epoch, best_val_loss = resume_from_checkpoint(
-            args.resume, model, optimizer, scheduler, config.device
+    print(f"Using config: {config.name}")
+
+    init_wandb(config, read_wandb_run_id(args.resume))
+
+    try:
+        train_loader, val_loader = build_dataloader(config)
+        model = build_model(config)
+        criterion = build_criterion(config)
+        optimizer = build_optimizer(config, model, criterion)
+        scheduler = build_scheduler(optimizer, config, len(train_loader))
+
+        if args.resume is not None:
+            start_epoch, best_val_loss = resume_from_checkpoint(
+                args.resume, model, optimizer, scheduler, config.device
+            )
+        else:
+            start_epoch, best_val_loss = 1, float("inf")
+
+        trainer = Trainer(
+            config=config,
+            criterion=criterion,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            start_epoch=start_epoch,
+            best_val_loss=best_val_loss,
         )
-    else:
-        start_epoch, best_val_loss = 1, float("inf")
+        trainer.fit(train_loader, val_loader)
+    finally:
+        if config.use_wandb:
+            wandb.finish()
 
 
 if __name__ == "__main__":

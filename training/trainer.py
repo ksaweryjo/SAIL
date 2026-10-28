@@ -3,11 +3,11 @@ import time
 
 import torch
 import torch.nn.functional as F
-import wandb
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from wandb.sdk.wandb_run import Run
 
+import wandb
 from models.contrastive_model import ContrastiveModel
 from training.checkpointing import save_checkpoint
 from training.configs.baseline_config import Config
@@ -80,9 +80,7 @@ class Trainer:
         return loss, audio_emb, img_emb
 
     def _temperature(self) -> float:
-        scale = min(
-            self.criterion.logit_scale.item(), self.criterion.max_logit_scale
-        )
+        scale = min(self.criterion.logit_scale.item(), self.criterion.max_logit_scale)
         return 1.0 / math.exp(scale)
 
     @staticmethod
@@ -134,9 +132,7 @@ class Trainer:
             if self.global_step % self.config.log_every_n_steps == 0:
                 loss_val = loss.item()
                 if math.isnan(loss_val):
-                    raise RuntimeError(
-                        f"Loss is NaN at global step {self.global_step}"
-                    )
+                    raise RuntimeError(f"Loss is NaN at global step {self.global_step}")
                 self._log(
                     {
                         "global_step": self.global_step,
