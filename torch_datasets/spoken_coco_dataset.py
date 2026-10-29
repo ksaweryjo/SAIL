@@ -34,10 +34,21 @@ class SpokenCocoDataset(Dataset):
                 continue
 
             image_name = Path(record["image"])
-            if image_name.parts[0] == "val2014" or image_name.parts[0] == "train2014" or image_name.parts[0] == "test2014":
+
+            if image_name.parts[0] in {"train2014", "val2014", "test2014"}:
                 image_name = Path(*image_name.parts[1:])
 
             img_path = img_dir / image_name
+
+            if not img_path.exists() and image_name.parts:
+                alternative_dirs = ["val2014"]
+
+                for directory in alternative_dirs:
+                    alternative_path = img_dir.parent / directory / image_name
+                    if alternative_path.exists():
+                        img_path = alternative_path
+                        break
+
             for cap in record["captions"]:
                 wav_name = Path(cap["wav"])
                 if wav_name.parts[0] == "wavs":

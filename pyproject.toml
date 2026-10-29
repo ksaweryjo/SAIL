@@ -64,6 +64,9 @@ lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 # Allow unused imports in __init__.py files.
 "__init__.py" = ["F401"]
 
+[tool.ruff.lint.isort]
+known-third-party = ["wandb"]
+
 [dependency-groups]
 dev = ["ipykernel>=7.2.0", "pyright>=1.1.408", "ruff>=0.15.5"]
 
