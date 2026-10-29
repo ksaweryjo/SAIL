@@ -50,7 +50,7 @@ class ContrastiveModel(nn.Module):
         return emb
 
     def forward(
-        self, visual: torch.Tensor, audio: torch.Tensor
+        self, audio: torch.Tensor, visual: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         audio_emb = self.encode_audio(audio)
         visual_emb = self.encode_visual(visual)

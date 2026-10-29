@@ -67,14 +67,14 @@ class Trainer:
         }
 
     def _forward(
-        self, img: torch.Tensor, audio: torch.Tensor
+        self, audio: torch.Tensor, img: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.autocast(
             device_type=self.device_type,
             dtype=torch.bfloat16,
             enabled=self.amp_enabled,
         ):
-            img_emb, audio_emb = self.model(img, audio)
+            audio_emb, img_emb = self.model(audio, img)
 
         audio_emb = audio_emb.float()
         img_emb = img_emb.float()
@@ -115,7 +115,7 @@ class Trainer:
             batch = self._to_device(batch)
             self.optimizer.zero_grad(set_to_none=True)
 
-            loss, _, _ = self._forward(batch["img"], batch["audio"])
+            loss, _, _ = self._forward(batch["audio"], batch["img"])
             loss.backward()
 
             max_norm = self.config.grad_clip_norm
@@ -161,7 +161,7 @@ class Trainer:
 
         for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]", leave=False):
             batch = self._to_device(batch)
-            loss, audio_emb, img_emb = self._forward(batch["img"], batch["audio"])
+            loss, audio_emb, img_emb = self._forward(batch["audio"], batch["img"])
             total_loss += loss
             n += 1
             aud_embs.append(F.normalize(audio_emb, dim=-1).cpu())
