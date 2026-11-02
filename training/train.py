@@ -206,6 +206,8 @@ def init_wandb(config: Config, resume_run_id: str | None) -> None:
         name=config.name,
         entity=config.wandb_entity,
         project=config.wandb_project,
+        group=config.wandb_group,
+        tags=config.wandb_tags,
         config=asdict(config),
         id=resume_run_id,
         resume="allow",

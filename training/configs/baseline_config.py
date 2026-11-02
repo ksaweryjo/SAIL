@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 
@@ -26,7 +26,7 @@ class Config:
     adam_beta1: float = 0.9
     adam_beta2: float = 0.98
     adam_eps: float = 1e-6
-    warmup_epochs: int = 1
+    warmup_epochs: int = 2
     use_cosine_schedule: bool = True
 
     # Model
@@ -35,7 +35,7 @@ class Config:
     freeze_audio_backbone: bool = True
     freeze_visual_backbone: bool = True
     shared_dim: int = 512
-    projection_type: str = "mlp"
+    projection_type: str = "linear"
     dropout: float = 0.1
 
     # Training
@@ -66,5 +66,7 @@ class Config:
     log_every_n_steps: int = 50
     wandb_entity: str = "hush-ai"
     wandb_project: str = "Speech-To-Image-SAIL"
+    wandb_group: str = "baselines"
+    wandb_tags: List[str] = field(default_factory=lambda: ["baseline"])
     
     grad_clip_norm: Optional[float] = 1.0
