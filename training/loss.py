@@ -23,6 +23,12 @@ class InfoNCE_Loss(nn.Module):
     def forward(
         self, audio_emb: torch.Tensor, img_emb: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        loss, _, _, logits = self.compute_components(audio_emb, img_emb)
+        return loss, logits
+
+    def compute_components(
+        self, audio_emb: torch.Tensor, img_emb: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         audio_emb = F.normalize(audio_emb, dim=-1)
         img_emb = F.normalize(img_emb, dim=-1)
 
@@ -34,4 +40,4 @@ class InfoNCE_Loss(nn.Module):
         loss_i2a = F.cross_entropy(logits.T, labels)  # symmetric loss for image-audio pairs
         loss = (loss_a2i + loss_i2a) / 2
 
-        return loss, logits
+        return loss, loss_a2i, loss_i2a, logits
