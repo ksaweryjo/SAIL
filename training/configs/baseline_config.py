@@ -31,7 +31,7 @@ class Config:
 
     # Model
     visual_model_name: str = "dinov2"
-    audio_model_name: str = "facebook/hubert-large-ls960-ft"
+    audio_model_name: str = "ntu-spml/distilhubert"
     freeze_audio_backbone: bool = True
     freeze_visual_backbone: bool = True
     shared_dim: int = 512
@@ -42,10 +42,14 @@ class Config:
     epochs: int = 10
     batch_size: int = 32
     use_amp: bool = True # we will default to bf16
-    # d_type: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     learn_temperature: bool = True
     init_temperature: float = 0.07
+    
+    ## Sampler
+    max_train_pairs: Optional[int] = 3000
+    max_val_pairs: Optional[int] = 500
+    sample_seed: int = 123
 
     # Paths
     data_dir: Path = Path("data/spokencoco")

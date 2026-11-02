@@ -50,6 +50,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Resume training from a checkpoint (provide path)",
     )
+    parser.add_argument(
+        "--train-max-pairs",
+        type=int,
+        default=None,
+        help="Use at most this many image-audio pairs for training",
+    )
+    parser.add_argument(
+        "--val-max-pairs",
+        type=int,
+        default=None,
+        help="Use at most this many image-audio pairs for validation",
+    )
+    parser.add_argument(
+        "--sample-seed",
+        type=int,
+        default=None,
+        help="Seed used to select a reproducible subset of pairs",
+    )
 
     return parser.parse_args()
 
@@ -115,6 +133,8 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
         audio_transform=Audio_TrainTransform(
             sample_rate=config.sample_rate, normalize=config.normalize
         ),
+        max_pairs=config.max_train_pairs,
+        sample_seed=config.sample_seed,
     )
 
     val_dataset = SpokenCocoDataset(
@@ -125,6 +145,8 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
         audio_transform=Audio_ValTransform(
             sample_rate=config.sample_rate, normalize=config.normalize
         ),
+        max_pairs=config.max_val_pairs,
+        sample_seed=config.sample_seed,
     )
 
     train_loader = DataLoader(
@@ -193,6 +215,12 @@ def init_wandb(config: Config, resume_run_id: str | None) -> None:
 def main() -> None:
     args = parse_args()
     config = get_config(args.config)
+    if args.train_max_pairs is not None:
+        config.max_train_pairs = args.train_max_pairs
+    if args.val_max_pairs is not None:
+        config.max_val_pairs = args.val_max_pairs
+    if args.sample_seed is not None:
+        config.sample_seed = args.sample_seed
     print(f"Using config: {config.name}")
 
     init_wandb(config, read_wandb_run_id(args.resume))

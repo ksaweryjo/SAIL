@@ -1,4 +1,5 @@
 import json
+import random
 from pathlib import Path
 from typing import Callable, List, Optional, Set
 
@@ -20,7 +21,12 @@ class SpokenCocoDataset(Dataset):
         img_transform: Optional[Callable] = None,
         audio_transform: Optional[Callable] = None,
         sample_rate: int = 16000,
+        max_pairs: Optional[int] = None,
+        sample_seed: int = 123,
     ) -> None:
+        if max_pairs is not None and max_pairs < 1:
+            raise ValueError("max_pairs must be at least 1 or None")
+
         self.img_transform = img_transform
         self.audio_transform = audio_transform
         self.sample_rate = sample_rate
@@ -59,6 +65,10 @@ class SpokenCocoDataset(Dataset):
 
                 self.data.append((img_path, audio_dir / wav_name, cap["text"]))
 
+        if max_pairs is not None and max_pairs < len(self.data):
+            sampler = random.Random(sample_seed)
+            self.data = sampler.sample(self.data, max_pairs)
+
 
     def __len__(self) -> int:
         return len(self.data)
@@ -88,6 +98,7 @@ if __name__ == "__main__":
         img_dir=DATA_DIR / "val2014",
         audio_dir=DATA_DIR / "wavs/val",
         ann_file=DATA_DIR / "SpokenCOCO_val.json",
+        sample_seed=123,
         img_transform=Img_TrainTransform(),  
         audio_transform=Audio_TrainTransform()
     )
