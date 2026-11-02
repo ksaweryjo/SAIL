@@ -34,9 +34,18 @@ class ContrastiveModel(nn.Module):
             self.visual_encoder.feature_dim, shared_dim, dropout, projection_type
         )
 
-    def encode_audio(self, audio: torch.Tensor, normalize: bool = False) -> torch.Tensor:
-        feats = self.audio_encoder(audio)
-        feats = feats.mean(dim=1)  # [B, T, D] -> [B, D]
+    def encode_audio(
+        self,
+        audio: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        normalize: bool = False,
+    ) -> torch.Tensor:
+        feats, feature_mask = self.audio_encoder(audio, attention_mask)
+        if feature_mask is None:
+            feats = feats.mean(dim=1)
+        else:
+            mask = feature_mask.unsqueeze(-1).to(feats.dtype)
+            feats = (feats * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1)
         emb = self.audio_projection(feats)
         if normalize:
             emb = F.normalize(emb, dim=-1)
@@ -50,8 +59,11 @@ class ContrastiveModel(nn.Module):
         return emb
 
     def forward(
-        self, audio: torch.Tensor, visual: torch.Tensor
+        self,
+        audio: torch.Tensor,
+        visual: torch.Tensor,
+        audio_attention_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        audio_emb = self.encode_audio(audio)
+        audio_emb = self.encode_audio(audio, audio_attention_mask)
         visual_emb = self.encode_visual(visual)
         return audio_emb, visual_emb
