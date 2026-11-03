@@ -14,6 +14,5 @@ class Config(Baseline):
     visual_model_name: str = "dinov2"
     freeze_visual_backbone: bool = False
     loss_type: str = "multi_positive"
-    projection_type: str = "mlp"
     wandb_group: str = "unfrozen"
-    wandb_tags: List[str] = field(default_factory=lambda: ["dinov2", "distilhubert", "multipos", "temp_on", "mlp", "frozen_audio", "unfrozen_image"])
+    wandb_tags: List[str] = field(default_factory=lambda: ["dinov2", "distilhubert", "multipos", "temp_on", "linear", "frozen_audio", "unfrozen_image"])
