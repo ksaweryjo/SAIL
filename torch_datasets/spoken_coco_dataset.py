@@ -33,7 +33,7 @@ class SpokenCocoDataset(Dataset):
         with open(ann_file, "r", encoding="utf-8") as f:
             ann = json.load(f)
 
-        self.data: List[tuple[Path, Path, str]] = []
+        self.data: List[tuple[Path, Path, str, int]] = []
         for record in ann["data"]:
             image_id = int(Path(record["image"]).stem.split("_")[-1])
             if image_ids is not None and image_id not in image_ids:
@@ -63,7 +63,7 @@ class SpokenCocoDataset(Dataset):
                 if wav_name.parts and wav_name.parts[0] in {"val", "train", "test"}:
                     wav_name = Path(*wav_name.parts[1:])
 
-                self.data.append((img_path, audio_dir / wav_name, cap["text"]))
+                self.data.append((img_path, audio_dir / wav_name, cap["text"], image_id))
 
         if max_pairs is not None and max_pairs < len(self.data):
             sampler = random.Random(sample_seed)
@@ -73,8 +73,10 @@ class SpokenCocoDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, int, str]:
-        img_path, wav_path, text = self.data[idx]
+    def __getitem__(
+        self, idx: int
+    ) -> tuple[torch.Tensor, torch.Tensor, int, str, int]:
+        img_path, wav_path, text, image_id = self.data[idx]
 
         img = io.read_image(str(img_path), mode=io.ImageReadMode.RGB).float() / 255.0
         if self.img_transform is not None:
@@ -88,7 +90,7 @@ class SpokenCocoDataset(Dataset):
         else:
             length = audio.shape[-1]
 
-        return img, audio, length, text
+        return img, audio, length, text, image_id
 
 BASE_DIR = Path(__file__).parent.resolve()
 DATA_DIR = (BASE_DIR / ".." / "data" / "spokencoco").resolve()

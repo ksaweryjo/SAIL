@@ -2,7 +2,6 @@ import math
 import time
 
 import torch
-import torch.nn.functional as F
 import wandb
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -12,6 +11,7 @@ from models.contrastive_model import ContrastiveModel
 from training.checkpointing import save_checkpoint
 from training.configs.baseline_config import Config
 from training.loss import InfoNCE_Loss
+from training.metrics import embedding_diagnostics, retrieval_metrics
 
 
 class Trainer:
@@ -47,9 +47,23 @@ class Trainer:
         if self.use_wandb:
             wandb.define_metric("global_step")
             wandb.define_metric("epoch")
-            wandb.define_metric("train/*", step_metric="global_step")
-            wandb.define_metric("train/epoch_loss", step_metric="epoch")
+            for name in (
+                "loss",
+                "a2i_loss",
+                "i2a_loss",
+                "lr",
+                "grad_norm",
+                "temperature",
+            ):
+                wandb.define_metric(f"train/{name}", step_metric="global_step")
+            for name in ("epoch_loss", "epoch_a2i_loss", "epoch_i2a_loss"):
+                wandb.define_metric(f"train/{name}", step_metric="epoch")
             wandb.define_metric("val/*", step_metric="epoch")
+            wandb.define_metric("performance/batch_time", step_metric="global_step")
+            wandb.define_metric(
+                "performance/step_samples_per_sec", step_metric="global_step"
+            )
+            wandb.define_metric("performance/epoch_*", step_metric="epoch")
 
     def _log(self, metrics: dict[str, float | int]) -> None:
         if self.use_wandb:
@@ -59,63 +73,68 @@ class Trainer:
         return wandb.run if self.use_wandb else None
 
     def _to_device(self, batch: list) -> dict[str, torch.Tensor]:
-        img, audio, length, text = batch
+        img, audio, length, text, image_ids = batch
+        lengths = length.to(self.device, dtype=torch.long)
+        attention_mask = (
+            torch.arange(audio.size(1), device=self.device)[None, :]
+            < lengths[:, None]
+        )
 
         return {
             "img": img.to(self.device, non_blocking=True),
             "audio": audio.to(self.device, non_blocking=True),
+            "audio_attention_mask": attention_mask,
+            "image_ids": image_ids.to(self.device, dtype=torch.long),
         }
 
     def _forward(
-        self, audio: torch.Tensor, img: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self,
+        audio: torch.Tensor,
+        img: torch.Tensor,
+        audio_attention_mask: torch.Tensor,
+        image_ids: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.autocast(
             device_type=self.device_type,
             dtype=torch.bfloat16,
             enabled=self.amp_enabled,
         ):
-            audio_emb, img_emb = self.model(audio, img)
+            audio_emb, img_emb = self.model(audio, img, audio_attention_mask)
 
         audio_emb = audio_emb.float()
         img_emb = img_emb.float()
-        loss, _ = self.criterion(audio_emb, img_emb)
-        return loss, audio_emb, img_emb
+        loss, loss_a2i, loss_i2a, _ = self.criterion.compute_components(
+            audio_emb, img_emb, image_ids
+        )
+        return loss, loss_a2i, loss_i2a, audio_emb, img_emb
 
     def _temperature(self) -> float:
         scale = min(self.criterion.logit_scale.item(), self.criterion.max_logit_scale)
         return 1.0 / math.exp(scale)
 
-    @staticmethod
-    def _recall(
-        audio_emb: torch.Tensor,
-        img_emb: torch.Tensor,
-        ks: tuple[int, ...] = (1, 5, 10),
-    ) -> dict[str, float]:
-        sim = audio_emb @ img_emb.T
-        n = sim.size(0)
-        max_k = min(max(ks), n)
-        target = torch.arange(n, device=sim.device).unsqueeze(1)
-
-        metrics: dict[str, float] = {}
-        for name, s in (("a2i", sim), ("i2a", sim.T)):
-            top = s.topk(max_k, dim=1).indices
-            for k in ks:
-                hits = (top[:, : min(k, max_k)] == target).any(dim=1)
-                metrics[f"val/recall_{name}@{k}"] = hits.float().mean().item()
-        return metrics
-
-    def train_one_epoch(self, train_loader: DataLoader, epoch: int) -> float:
+    def train_one_epoch(self, train_loader: DataLoader, epoch: int) -> dict[str, float]:
         self.model.train()
         self.criterion.train()
         total_loss = torch.zeros((), device=self.device)
+        total_a2i_loss = torch.zeros((), device=self.device)
+        total_i2a_loss = torch.zeros((), device=self.device)
         n = 0
+        samples = 0
         t0 = time.time()
+        last_batch_time = t0
+        metrics: dict[str, float] = {}
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch} [train]", leave=False):
+            batch_start = time.time()
             batch = self._to_device(batch)
             self.optimizer.zero_grad(set_to_none=True)
 
-            loss, _, _ = self._forward(batch["audio"], batch["img"])
+            loss, loss_a2i, loss_i2a, _, _ = self._forward(
+                batch["audio"],
+                batch["img"],
+                batch["audio_attention_mask"],
+                batch["image_ids"],
+            )
             loss.backward()
 
             max_norm = self.config.grad_clip_norm
@@ -129,7 +148,11 @@ class Trainer:
 
             self.global_step += 1
             total_loss += loss.detach()
+            total_a2i_loss += loss_a2i.detach()
+            total_i2a_loss += loss_i2a.detach()
             n += 1
+            samples += batch["audio"].size(0)
+            last_batch_time = time.time() - batch_start
 
             if self.global_step % self.config.log_every_n_steps == 0:
                 loss_val = loss.item()
@@ -139,14 +162,28 @@ class Trainer:
                     {
                         "global_step": self.global_step,
                         "train/loss": loss_val,
+                        "train/a2i_loss": loss_a2i.item(),
+                        "train/i2a_loss": loss_i2a.item(),
                         "train/lr": self.optimizer.param_groups[0]["lr"],
                         "train/grad_norm": grad_norm.item(),
                         "train/temperature": self._temperature(),
-                        "train/steps_per_sec": n / (time.time() - t0),
+                        "performance/batch_time": last_batch_time,
+                        "performance/step_samples_per_sec": (
+                            batch["audio"].size(0) / last_batch_time
+                        ),
                     }
                 )
 
-        return (total_loss / max(n, 1)).item()
+        epoch_time = time.time() - t0
+        metrics["train/epoch_loss"] = (total_loss / max(n, 1)).item()
+        metrics["train/epoch_a2i_loss"] = (total_a2i_loss / max(n, 1)).item()
+        metrics["train/epoch_i2a_loss"] = (total_i2a_loss / max(n, 1)).item()
+        metrics["performance/epoch_time"] = epoch_time
+        metrics["performance/epoch_steps_per_sec"] = n / max(epoch_time, 1e-12)
+        metrics["performance/epoch_samples_per_sec"] = (
+            samples / max(epoch_time, 1e-12)
+        )
+        return metrics
 
     @torch.no_grad()
     def validate_one_epoch(
@@ -155,22 +192,38 @@ class Trainer:
         self.model.eval()
         self.criterion.eval()
         total_loss = torch.zeros((), device=self.device)
+        total_a2i_loss = torch.zeros((), device=self.device)
+        total_i2a_loss = torch.zeros((), device=self.device)
         n = 0
         aud_embs: list[torch.Tensor] = []
         img_embs: list[torch.Tensor] = []
+        image_id_batches: list[torch.Tensor] = []
 
         for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]", leave=False):
             batch = self._to_device(batch)
-            loss, audio_emb, img_emb = self._forward(batch["audio"], batch["img"])
+            loss, loss_a2i, loss_i2a, audio_emb, img_emb = self._forward(
+                batch["audio"],
+                batch["img"],
+                batch["audio_attention_mask"],
+                batch["image_ids"],
+            )
             total_loss += loss
+            total_a2i_loss += loss_a2i
+            total_i2a_loss += loss_i2a
             n += 1
-            aud_embs.append(F.normalize(audio_emb, dim=-1).cpu())
-            img_embs.append(F.normalize(img_emb, dim=-1).cpu())
+            aud_embs.append(audio_emb.cpu())
+            img_embs.append(img_emb.cpu())
+            image_id_batches.append(batch["image_ids"].cpu())
 
         audio_all = torch.cat(aud_embs, dim=0)
         img_all = torch.cat(img_embs, dim=0)
+        all_image_ids = torch.cat(image_id_batches, dim=0)
 
-        metrics = self._recall(audio_all, img_all)
+        raw_metrics = retrieval_metrics(audio_all, img_all, all_image_ids)
+        raw_metrics.update(embedding_diagnostics(audio_all, img_all))
+        metrics = {f"val/{name}": value for name, value in raw_metrics.items()}
+        metrics["val/a2i_loss"] = (total_a2i_loss / max(n, 1)).item()
+        metrics["val/i2a_loss"] = (total_i2a_loss / max(n, 1)).item()
         metrics["val/loss"] = (total_loss / max(n, 1)).item()
         return metrics
 
@@ -178,9 +231,10 @@ class Trainer:
         self.global_step = (self.start_epoch - 1) * len(train_loader)
 
         for epoch in range(self.start_epoch, self.config.epochs + 1):
-            train_loss = self.train_one_epoch(train_loader, epoch)
+            train_metrics = self.train_one_epoch(train_loader, epoch)
             val_metrics = self.validate_one_epoch(val_loader, epoch)
             val_loss = val_metrics["val/loss"]
+            train_loss = train_metrics["train/epoch_loss"]
 
             print(
                 f"Epoch {epoch}/{self.config.epochs} | "
@@ -192,7 +246,7 @@ class Trainer:
             self._log(
                 {
                     "epoch": epoch,
-                    "train/epoch_loss": train_loss,
+                    **train_metrics,
                     **val_metrics,
                 }
             )

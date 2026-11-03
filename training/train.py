@@ -18,7 +18,7 @@ from torch_datasets.transforms import (
 )
 from training.checkpointing import load_checkpoint, read_wandb_run_id
 from training.configs.baseline_config import Config
-from training.loss import InfoNCE_Loss
+from training.loss import InfoNCE_Loss, MultiPositiveInfoNCE_Loss
 from training.trainer import Trainer
 
 
@@ -87,7 +87,16 @@ def build_model(config: Config) -> ContrastiveModel:
 
 
 def build_criterion(config: Config) -> InfoNCE_Loss:
-    criterion = InfoNCE_Loss(
+    loss_classes = {
+        "infonce": InfoNCE_Loss,
+        "multi_positive": MultiPositiveInfoNCE_Loss,
+    }
+    if config.loss_type not in loss_classes:
+        raise ValueError(
+            f"Unknown loss_type {config.loss_type!r}; "
+            f"choose one of {tuple(loss_classes)}"
+        )
+    criterion = loss_classes[config.loss_type](
         learn_temperature=config.learn_temperature,
         init_temperature=config.init_temperature,
     ).to(config.device)
@@ -164,6 +173,9 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
         num_workers=4,
         pin_memory=True,
     )
+
+    if len(train_dataset) == 0 or len(val_dataset) == 0:
+        raise ValueError("Training and validation datasets must not be empty")
 
     return train_loader, val_loader
 
