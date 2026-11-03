@@ -13,6 +13,5 @@ class Config(Baseline):
     audio_model_name: str = "ntu-spml/distilhubert"
     loss_type: str = "multi_positive"
     projection_type: str = "mlp"
-    learn_temperature: bool = False
     wandb_group: str = "projection_type"
-    wandb_tags: List[str] = field(default_factory=lambda: ["dinov2", "distilhubert", "multipos", "temp_off", "mlp", "frozen_audio", "frozen_image"])
+    wandb_tags: List[str] = field(default_factory=lambda: ["dinov2", "distilhubert", "multipos", "temp_on", "mlp", "frozen_audio", "frozen_image"])
