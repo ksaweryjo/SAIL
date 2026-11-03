@@ -37,6 +37,7 @@ class Config:
     shared_dim: int = 512
     projection_type: str = "linear"
     dropout: float = 0.1
+    loss_type: str = "infonce"
 
     # Training
     epochs: int = 10

@@ -73,27 +73,38 @@ class Trainer:
         return wandb.run if self.use_wandb else None
 
     def _to_device(self, batch: list) -> dict[str, torch.Tensor]:
-        img, audio, length, text = batch
+        img, audio, length, text, image_ids = batch
+        lengths = length.to(self.device, dtype=torch.long)
+        attention_mask = (
+            torch.arange(audio.size(1), device=self.device)[None, :]
+            < lengths[:, None]
+        )
 
         return {
             "img": img.to(self.device, non_blocking=True),
             "audio": audio.to(self.device, non_blocking=True),
+            "audio_attention_mask": attention_mask,
+            "image_ids": image_ids.to(self.device, dtype=torch.long),
         }
 
     def _forward(
-        self, audio: torch.Tensor, img: torch.Tensor
+        self,
+        audio: torch.Tensor,
+        img: torch.Tensor,
+        audio_attention_mask: torch.Tensor,
+        image_ids: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.autocast(
             device_type=self.device_type,
             dtype=torch.bfloat16,
             enabled=self.amp_enabled,
         ):
-            audio_emb, img_emb = self.model(audio, img)
+            audio_emb, img_emb = self.model(audio, img, audio_attention_mask)
 
         audio_emb = audio_emb.float()
         img_emb = img_emb.float()
         loss, loss_a2i, loss_i2a, _ = self.criterion.compute_components(
-            audio_emb, img_emb
+            audio_emb, img_emb, image_ids
         )
         return loss, loss_a2i, loss_i2a, audio_emb, img_emb
 
@@ -119,7 +130,10 @@ class Trainer:
             self.optimizer.zero_grad(set_to_none=True)
 
             loss, loss_a2i, loss_i2a, _, _ = self._forward(
-                batch["audio"], batch["img"]
+                batch["audio"],
+                batch["img"],
+                batch["audio_attention_mask"],
+                batch["image_ids"],
             )
             loss.backward()
 
@@ -183,11 +197,15 @@ class Trainer:
         n = 0
         aud_embs: list[torch.Tensor] = []
         img_embs: list[torch.Tensor] = []
+        image_id_batches: list[torch.Tensor] = []
 
         for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]", leave=False):
             batch = self._to_device(batch)
             loss, loss_a2i, loss_i2a, audio_emb, img_emb = self._forward(
-                batch["audio"], batch["img"]
+                batch["audio"],
+                batch["img"],
+                batch["audio_attention_mask"],
+                batch["image_ids"],
             )
             total_loss += loss
             total_a2i_loss += loss_a2i
@@ -195,11 +213,13 @@ class Trainer:
             n += 1
             aud_embs.append(audio_emb.cpu())
             img_embs.append(img_emb.cpu())
+            image_id_batches.append(batch["image_ids"].cpu())
 
         audio_all = torch.cat(aud_embs, dim=0)
         img_all = torch.cat(img_embs, dim=0)
+        all_image_ids = torch.cat(image_id_batches, dim=0)
 
-        raw_metrics = retrieval_metrics(audio_all, img_all)
+        raw_metrics = retrieval_metrics(audio_all, img_all, all_image_ids)
         raw_metrics.update(embedding_diagnostics(audio_all, img_all))
         metrics = {f"val/{name}": value for name, value in raw_metrics.items()}
         metrics["val/a2i_loss"] = (total_a2i_loss / max(n, 1)).item()
