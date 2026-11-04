@@ -8,9 +8,11 @@ from training.configs.baseline_config import Config as Baseline
 class Config(Baseline):
     '''Experiment group C - test multi-positive loss'''
     name: str = "multipos_loss"
-
     epochs: int = 20
-    audio_model_name: str = "ntu-spml/distilhubert"
+    
+    # Experiment parameters 
     loss_type: str = "multi_positive"
+    
+    # wandb
     wandb_group: str = "loss"
     wandb_tags: List[str] = field(default_factory=lambda: ["dinov2", "distilhubert", "multipos", "temp_on", "linear", "frozen_audio", "frozen_image"])
