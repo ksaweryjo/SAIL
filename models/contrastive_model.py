@@ -20,10 +20,12 @@ class ContrastiveModel(nn.Module):
     ) -> None:
         super().__init__()
         self.visual_encoder = VisualEncoder(model_name=visual_model_name)
+        self.visual_backbone_frozen = freeze_visual_backbone
         if freeze_visual_backbone:
             self.visual_encoder.freeze_backbone()
 
         self.audio_encoder = AudioEncoder(model_name=audio_model_name)
+        self.audio_backbone_frozen = freeze_audio_backbone
         if freeze_audio_backbone:
             self.audio_encoder.freeze_backbone()
 
@@ -40,7 +42,11 @@ class ContrastiveModel(nn.Module):
         attention_mask: torch.Tensor | None = None,
         normalize: bool = False,
     ) -> torch.Tensor:
-        feats, feature_mask = self.audio_encoder(audio, attention_mask)
+        if self.audio_backbone_frozen:
+            with torch.no_grad():
+                feats, feature_mask = self.audio_encoder(audio, attention_mask)
+        else:
+            feats, feature_mask = self.audio_encoder(audio, attention_mask)
         if feature_mask is None:
             feats = feats.mean(dim=1)
         else:
@@ -52,7 +58,11 @@ class ContrastiveModel(nn.Module):
         return emb
 
     def encode_visual(self, visual: torch.Tensor, normalize: bool = False) -> torch.Tensor:
-        feats = self.visual_encoder(visual)
+        if self.visual_backbone_frozen:
+            with torch.no_grad():
+                feats = self.visual_encoder(visual)
+        else:
+            feats = self.visual_encoder(visual)
         emb = self.visual_projection(feats)
         if normalize:
             emb = F.normalize(emb, dim=-1)

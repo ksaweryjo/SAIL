@@ -67,7 +67,7 @@ class Config:
     log_every_n_steps: int = 50
     wandb_entity: str = "hush-ai"
     wandb_project: str = "Speech-To-Image-SAIL"
-    wandb_group: str = "baselines"
+    wandb_group: str = "baseline"
     wandb_tags: List[str] = field(default_factory=lambda: ["baseline"])
     
     grad_clip_norm: Optional[float] = 1.0
