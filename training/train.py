@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
 from models.contrastive_model import ContrastiveModel
+from torch_datasets.flickr_audio_image_dataset import FlickrAudioImageDataset
 from torch_datasets.spoken_coco_dataset import SpokenCocoDataset
 from torch_datasets.transforms import (
     Audio_TrainTransform,
@@ -43,6 +44,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Training script for SAIL model")
     parser.add_argument(
         "--config", type=str, default="baseline_config", help="Name of the config file"
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=("coco", "flickr"),
+        default="coco",
+        help="Dataset to use for training",
     )
     parser.add_argument(
         "--resume",
@@ -129,34 +136,76 @@ def build_optimizer(
 
 
 def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
-    train_dataset = SpokenCocoDataset(
-        img_dir=config.train_image_dir,
-        audio_dir=config.train_audio_dir,
-        ann_file=config.train_json_file,
-        img_transform=Img_TrainTransform(
-            size=config.size,
-            crop_scale=config.crop_scale,
-            hflip_p=config.hflip_p,
-            jitter_params=config.jitter_params,
-        ),
-        audio_transform=Audio_TrainTransform(
-            sample_rate=config.sample_rate, normalize=config.normalize
-        ),
-        max_pairs=config.max_train_pairs,
-        sample_seed=config.sample_seed,
+    train_img_transform = Img_TrainTransform(
+        size=config.size,
+        crop_scale=config.crop_scale,
+        hflip_p=config.hflip_p,
+        jitter_params=config.jitter_params,
+    )
+    audio_max_sec = (
+        config.train_max_sec_f
+        if config.dataset == "flickr"
+        else config.train_max_sec
+    )   
+    train_audio_transform = Audio_TrainTransform(
+        sample_rate=config.sample_rate,
+        max_sec=audio_max_sec,
+        normalize=config.normalize,
+    )
+    val_img_transform = Img_ValTransform(
+        size=config.size, use_ccrop=config.use_ccrop
+    )
+    audio_max_sec = (
+        config.val_max_sec_f
+        if config.dataset == "flickr"
+        else config.val_max_sec
+    )  
+    val_audio_transform = Audio_ValTransform(
+        sample_rate=config.sample_rate,
+        max_sec=audio_max_sec,
+        normalize=config.normalize,
     )
 
-    val_dataset = SpokenCocoDataset(
-        img_dir=config.val_image_dir,
-        audio_dir=config.val_audio_dir,
-        ann_file=config.val_json_file,
-        img_transform=Img_ValTransform(size=config.size, use_ccrop=config.use_ccrop),
-        audio_transform=Audio_ValTransform(
-            sample_rate=config.sample_rate, normalize=config.normalize
-        ),
-        max_pairs=config.max_val_pairs,
-        sample_seed=config.sample_seed,
-    )
+    if config.dataset == "coco":
+        train_dataset = SpokenCocoDataset(
+            img_dir=config.train_image_dir,
+            audio_dir=config.train_audio_dir,
+            ann_file=config.train_json_file,
+            img_transform=train_img_transform,
+            audio_transform=train_audio_transform,
+            max_pairs=config.max_train_pairs,
+            sample_seed=config.sample_seed,
+        )
+        val_dataset = SpokenCocoDataset(
+            img_dir=config.val_image_dir,
+            audio_dir=config.val_audio_dir,
+            ann_file=config.val_json_file,
+            img_transform=val_img_transform,
+            audio_transform=val_audio_transform,
+            max_pairs=config.max_val_pairs,
+            sample_seed=config.sample_seed,
+        )
+    elif config.dataset == "flickr":
+        train_dataset = FlickrAudioImageDataset(
+            split="train",
+            img_transform=train_img_transform,
+            audio_transform=train_audio_transform,
+            sample_rate=config.sample_rate,
+            max_pairs=config.max_train_pairs,
+            sample_seed=config.sample_seed,
+            val_fraction=config.flickr_val_fraction,
+        )
+        val_dataset = FlickrAudioImageDataset(
+            split="val",
+            img_transform=val_img_transform,
+            audio_transform=val_audio_transform,
+            sample_rate=config.sample_rate,
+            max_pairs=config.max_val_pairs,
+            sample_seed=config.sample_seed,
+            val_fraction=config.flickr_val_fraction,
+        )
+    else:
+        raise ValueError(f"Unknown dataset {config.dataset!r}")
 
     train_loader = DataLoader(
         train_dataset,
@@ -229,6 +278,7 @@ def init_wandb(config: Config, resume_run_id: str | None) -> None:
 def main() -> None:
     args = parse_args()
     config = get_config(args.config)
+    config.dataset = args.dataset
     if args.train_max_pairs is not None:
         config.max_train_pairs = args.train_max_pairs
     if args.val_max_pairs is not None:
