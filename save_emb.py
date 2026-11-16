@@ -3,6 +3,7 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from models.contrastive_model import ContrastiveModel
 from torch_datasets.flickr_audio_image_dataset import FlickrAudioImageDataset
@@ -89,7 +90,12 @@ def main() -> None:
     embeddings: dict[str, torch.Tensor] = {}
     offset = 0
     with torch.inference_mode():
-        for batch in loader:
+        progress = tqdm(
+            loader,
+            desc=f"Saving {args.dataset} audio embeddings",
+            unit="batch",
+        )
+        for batch in progress:
             if args.dataset == "spokencoco":
                 _, audio, lengths, _, _ = batch
                 keys = [
@@ -110,6 +116,7 @@ def main() -> None:
             for key, feature in zip(keys, pooled.cpu(), strict=True):
                 embeddings[key] = feature
             offset += audio.size(0)
+            progress.set_postfix(saved=len(embeddings))
 
     output.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"embeddings": embeddings}, output)
