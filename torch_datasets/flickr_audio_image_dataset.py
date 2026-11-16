@@ -19,6 +19,7 @@ class FlickrAudioImageDataset(Dataset):
         max_pairs: Optional[int] = None,
         sample_seed: int = 123,
         val_fraction: float = 0.2,
+        audio_only: bool = False,
     ) -> None:
         if split not in {"train", "val"}:
             raise ValueError("split must be 'train' or 'val'")
@@ -30,6 +31,7 @@ class FlickrAudioImageDataset(Dataset):
         self.img_transform = img_transform
         self.audio_transform = audio_transform
         self.sample_rate = sample_rate
+        self.audio_only = audio_only
 
         audio_dataset = load_dataset(
             "deep9539/flickr-audio-image", "audio", split="train"
@@ -87,12 +89,10 @@ class FlickrAudioImageDataset(Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> tuple[torch.Tensor, torch.Tensor, int, str, int]:
+    ) -> tuple[torch.Tensor, torch.Tensor, int, str, int] | tuple[
+        torch.Tensor, int, str
+    ]:
         audio_index, image_id, _ = self.data[idx]
-        image_record = self._image_dataset[self._image_by_id[image_id]]
-        img = pil_to_tensor(image_record["image"]).float() / 255.0
-        if self.img_transform is not None:
-            img = self.img_transform(img)
 
         audio_record = self._audio_dataset[audio_index]["audio"]
         audio_source = audio_record["bytes"]
@@ -115,6 +115,14 @@ class FlickrAudioImageDataset(Dataset):
             audio, length = self.audio_transform(audio)
         else:
             length = audio.shape[-1]
+
+        if self.audio_only:
+            return audio, length, self.data[idx][2]
+
+        image_record = self._image_dataset[self._image_by_id[image_id]]
+        img = pil_to_tensor(image_record["image"]).float() / 255.0
+        if self.img_transform is not None:
+            img = self.img_transform(img)
 
         return (
             img,
