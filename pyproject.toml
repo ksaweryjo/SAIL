@@ -74,6 +74,6 @@ dev = ["ipykernel>=7.2.0", "pyright>=1.1.408", "ruff>=0.15.5"]
 venvPath = "./.venv"
 typeCheckingMode = "standard"
 exclude = ["**/__pycache__", ".*", "**/.ipynb_checkpoints**"]
-include = ["notebooks/", "models/", "training/", "utils/", "datasets/"]
+include = ["notebooks/", "models/", "training/", "utils/", "datasets/", "torch_datasets/"]
 pythonPlatform = "All"
 pythonVersion = "3.13"

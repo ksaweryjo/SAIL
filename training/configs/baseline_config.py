@@ -8,6 +8,7 @@ import torch
 @dataclass
 class Config:
     name: str = "baseline"
+    dataset: str = "coco"
     
     # Img augmentation
     size: int = 224
@@ -19,6 +20,11 @@ class Config:
     # Audio augmentation
     sample_rate: int = 16000
     normalize: bool = True
+    train_max_sec: float = 9.8133
+    val_max_sec: float = 9.6427
+    train_max_sec_f: float = 8.192
+    val_max_sec_f: float = 8.192
+    flickr_val_fraction: float = 0.2
 
     # Optimizer
     lr: float = 1e-4
@@ -48,8 +54,8 @@ class Config:
     init_temperature: float = 0.07
     
     ## Sampler
-    max_train_pairs: Optional[int] = 3000
-    max_val_pairs: Optional[int] = 500
+    max_train_pairs: Optional[int] = None
+    max_val_pairs: Optional[int] = None
     sample_seed: int = 123
 
     # Paths
