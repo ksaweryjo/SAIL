@@ -60,7 +60,9 @@ def main() -> None:
         )
     else:
         output = args.output or (
-            project_root / config.checkpoint_dir / "flickr8k_audio_embeddings.pt"
+            project_root
+            / config.checkpoint_dir
+            / f"flickr8k_{args.split}_audio_embeddings.pt"
         )
         dataset = FlickrAudioImageDataset(
             split=args.split,

@@ -211,6 +211,23 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             audio_embedding_cache=val_audio_cache,
         )
     elif config.dataset == "flickr":
+        if config.freeze_audio_backbone:
+            train_audio_cache = (
+                config.train_audio_embedding_cache
+                or Path(
+                    config.checkpoint_dir, "flickr8k_train_audio_embeddings.pt"
+                )
+            )
+            val_audio_cache = (
+                config.val_audio_embedding_cache
+                or Path(
+                    config.checkpoint_dir, "flickr8k_val_audio_embeddings.pt"
+                )
+            )
+            if not train_audio_cache.is_file():
+                train_audio_cache = None
+            if not val_audio_cache.is_file():
+                val_audio_cache = None
         train_dataset = FlickrAudioImageDataset(
             split="train",
             img_transform=train_img_transform,
@@ -219,6 +236,7 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             max_pairs=config.max_train_pairs,
             sample_seed=config.sample_seed,
             val_fraction=config.flickr_val_fraction,
+            audio_embedding_cache=train_audio_cache,
         )
         val_dataset = FlickrAudioImageDataset(
             split="val",
@@ -228,6 +246,7 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             max_pairs=config.max_val_pairs,
             sample_seed=config.sample_seed,
             val_fraction=config.flickr_val_fraction,
+            audio_embedding_cache=val_audio_cache,
         )
     else:
         raise ValueError(f"Unknown dataset {config.dataset!r}")
