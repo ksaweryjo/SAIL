@@ -2,6 +2,7 @@ import argparse
 import importlib
 from dataclasses import asdict
 from itertools import chain
+from pathlib import Path
 
 import torch
 import wandb
@@ -136,6 +137,28 @@ def build_optimizer(
 
 
 def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
+    train_audio_cache = config.train_audio_embedding_cache
+    val_audio_cache = config.val_audio_embedding_cache
+    if config.freeze_audio_backbone:
+        train_audio_cache = train_audio_cache or Path(
+            config.checkpoint_dir, "train_audio_embeddings.pt"
+        )
+        val_audio_cache = val_audio_cache or Path(
+            config.checkpoint_dir, "val_audio_embeddings.pt"
+        )
+        if not train_audio_cache.is_file():
+            train_audio_cache = None
+        if not val_audio_cache.is_file():
+            val_audio_cache = None
+
+    if not config.freeze_audio_backbone and (
+        config.train_audio_embedding_cache is not None
+        or config.val_audio_embedding_cache is not None
+    ):
+        raise ValueError(
+            "Audio embedding caches require freeze_audio_backbone=True."
+        )
+
     train_img_transform = Img_TrainTransform(
         size=config.size,
         crop_scale=config.crop_scale,
@@ -175,6 +198,7 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             audio_transform=train_audio_transform,
             max_pairs=config.max_train_pairs,
             sample_seed=config.sample_seed,
+            audio_embedding_cache=train_audio_cache,
         )
         val_dataset = SpokenCocoDataset(
             img_dir=config.val_image_dir,
@@ -184,8 +208,26 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             audio_transform=val_audio_transform,
             max_pairs=config.max_val_pairs,
             sample_seed=config.sample_seed,
+            audio_embedding_cache=val_audio_cache,
         )
     elif config.dataset == "flickr":
+        if config.freeze_audio_backbone:
+            train_audio_cache = (
+                config.train_audio_embedding_cache
+                or Path(
+                    config.checkpoint_dir, "flickr8k_train_audio_embeddings.pt"
+                )
+            )
+            val_audio_cache = (
+                config.val_audio_embedding_cache
+                or Path(
+                    config.checkpoint_dir, "flickr8k_val_audio_embeddings.pt"
+                )
+            )
+            if not train_audio_cache.is_file():
+                train_audio_cache = None
+            if not val_audio_cache.is_file():
+                val_audio_cache = None
         train_dataset = FlickrAudioImageDataset(
             split="train",
             img_transform=train_img_transform,
@@ -194,6 +236,7 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             max_pairs=config.max_train_pairs,
             sample_seed=config.sample_seed,
             val_fraction=config.flickr_val_fraction,
+            audio_embedding_cache=train_audio_cache,
         )
         val_dataset = FlickrAudioImageDataset(
             split="val",
@@ -203,6 +246,7 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
             max_pairs=config.max_val_pairs,
             sample_seed=config.sample_seed,
             val_fraction=config.flickr_val_fraction,
+            audio_embedding_cache=val_audio_cache,
         )
     else:
         raise ValueError(f"Unknown dataset {config.dataset!r}")

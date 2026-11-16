@@ -23,6 +23,7 @@ class SpokenCocoDataset(Dataset):
         sample_rate: int = 16000,
         max_pairs: Optional[int] = None,
         sample_seed: int = 123,
+        audio_embedding_cache: Optional[Path] = None,
     ) -> None:
         if max_pairs is not None and max_pairs < 1:
             raise ValueError("max_pairs must be at least 1 or None")
@@ -30,6 +31,19 @@ class SpokenCocoDataset(Dataset):
         self.img_transform = img_transform
         self.audio_transform = audio_transform
         self.sample_rate = sample_rate
+        self.audio_embedding_cache = audio_embedding_cache
+        self.cached_audio_embeddings: dict[str, torch.Tensor] = {}
+        if audio_embedding_cache is not None:
+            if not audio_embedding_cache.is_file():
+                raise FileNotFoundError(
+                    f"Audio embedding cache not found: {audio_embedding_cache}"
+                )
+            cache = torch.load(audio_embedding_cache, map_location="cpu")
+            if not isinstance(cache, dict) or "embeddings" not in cache:
+                raise ValueError(
+                    f"Invalid audio embedding cache format: {audio_embedding_cache}"
+                )
+            self.cached_audio_embeddings = cache["embeddings"]
         with open(ann_file, "r", encoding="utf-8") as f:
             ann = json.load(f)
 
@@ -81,6 +95,18 @@ class SpokenCocoDataset(Dataset):
         img = io.read_image(str(img_path), mode=io.ImageReadMode.RGB).float() / 255.0
         if self.img_transform is not None:
             img = self.img_transform(img)
+
+        if self.audio_embedding_cache is not None:
+            key = wav_path.resolve().as_posix()
+            if key not in self.cached_audio_embeddings:
+                raise KeyError(f"Audio embedding missing from cache: {key}")
+            return (
+                img,
+                self.cached_audio_embeddings[key],
+                -1,
+                text,
+                image_id,
+            )
 
         audio, sr = sf.read(str(wav_path), dtype="float32", always_2d=True)
         assert sr == self.sample_rate, f"unexpected sample rate {sr} in {wav_path}"

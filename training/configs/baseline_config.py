@@ -67,6 +67,8 @@ class Config:
     val_audio_dir: Path = data_dir / "wavs/val"
     val_json_file: Path = data_dir / "SpokenCOCO_val.json"
     checkpoint_dir: str = "checkpoints"
+    train_audio_embedding_cache: Optional[Path] = None
+    val_audio_embedding_cache: Optional[Path] = None
 
     # Logging
     use_wandb: bool = True

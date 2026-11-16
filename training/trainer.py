@@ -1,5 +1,6 @@
 import math
 import time
+from typing import TypedDict
 
 import torch
 import wandb
@@ -12,6 +13,14 @@ from training.checkpointing import save_checkpoint
 from training.configs.baseline_config import Config
 from training.loss import InfoNCE_Loss
 from training.metrics import embedding_diagnostics, retrieval_metrics
+
+
+class DeviceBatch(TypedDict):
+    img: torch.Tensor
+    audio: torch.Tensor
+    audio_attention_mask: torch.Tensor | None
+    audio_is_cached: bool
+    image_ids: torch.Tensor
 
 
 class Trainer:
@@ -72,18 +81,22 @@ class Trainer:
     def _wandb_run(self) -> Run | None:
         return wandb.run if self.use_wandb else None
 
-    def _to_device(self, batch: list) -> dict[str, torch.Tensor]:
+    def _to_device(self, batch: list) -> DeviceBatch:
         img, audio, length, text, image_ids = batch
         lengths = length.to(self.device, dtype=torch.long)
-        attention_mask = (
-            torch.arange(audio.size(1), device=self.device)[None, :]
-            < lengths[:, None]
-        )
+        audio_is_cached = bool((lengths < 0).all())
+        attention_mask = None
+        if not audio_is_cached:
+            attention_mask = (
+                torch.arange(audio.size(1), device=self.device)[None, :]
+                < lengths[:, None]
+            )
 
         return {
             "img": img.to(self.device, non_blocking=True),
             "audio": audio.to(self.device, non_blocking=True),
             "audio_attention_mask": attention_mask,
+            "audio_is_cached": audio_is_cached,
             "image_ids": image_ids.to(self.device, dtype=torch.long),
         }
 
@@ -91,15 +104,20 @@ class Trainer:
         self,
         audio: torch.Tensor,
         img: torch.Tensor,
-        audio_attention_mask: torch.Tensor,
+        audio_attention_mask: torch.Tensor | None,
         image_ids: torch.Tensor,
+        audio_is_cached: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.autocast(
             device_type=self.device_type,
             dtype=torch.bfloat16,
             enabled=self.amp_enabled,
         ):
-            audio_emb, img_emb = self.model(audio, img, audio_attention_mask)
+            if audio_is_cached:
+                audio_emb = self.model.encode_audio_features(audio, normalize=False)
+                img_emb = self.model.encode_visual(img, normalize=False)
+            else:
+                audio_emb, img_emb = self.model(audio, img, audio_attention_mask)
 
         audio_emb = audio_emb.float()
         img_emb = img_emb.float()
@@ -134,6 +152,7 @@ class Trainer:
                 batch["img"],
                 batch["audio_attention_mask"],
                 batch["image_ids"],
+                batch["audio_is_cached"],
             )
             loss.backward()
 
@@ -206,6 +225,7 @@ class Trainer:
                 batch["img"],
                 batch["audio_attention_mask"],
                 batch["image_ids"],
+                batch["audio_is_cached"],
             )
             total_loss += loss
             total_a2i_loss += loss_a2i
