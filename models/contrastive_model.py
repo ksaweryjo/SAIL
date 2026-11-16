@@ -57,6 +57,14 @@ class ContrastiveModel(nn.Module):
             emb = F.normalize(emb, dim=-1)
         return emb
 
+    def encode_audio_features(
+        self, features: torch.Tensor, normalize: bool = False
+    ) -> torch.Tensor:
+        emb = self.audio_projection(features)
+        if normalize:
+            emb = F.normalize(emb, dim=-1)
+        return emb
+
     def encode_visual(self, visual: torch.Tensor, normalize: bool = False) -> torch.Tensor:
         if self.visual_backbone_frozen:
             with torch.no_grad():
