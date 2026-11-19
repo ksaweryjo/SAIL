@@ -45,7 +45,7 @@ class FlickrAudioImageDataset(Dataset):
         self._audio_by_id = {
             audio_id: index for index, audio_id in enumerate(audio_ids)
         }
-        image_ids = list(image_dataset["id"])
+        image_ids = sorted(image_dataset["id"])
         sampler = random.Random(sample_seed)
         sampler.shuffle(image_ids)
         val_count = max(1, round(len(image_ids) * val_fraction))
