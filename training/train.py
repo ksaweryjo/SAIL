@@ -164,6 +164,7 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
         crop_scale=config.crop_scale,
         hflip_p=config.hflip_p,
         jitter_params=config.jitter_params,
+        dataset=config.dataset,
     )
     audio_max_sec = (
         config.train_max_sec_f
@@ -176,7 +177,9 @@ def build_dataloader(config: Config) -> tuple[DataLoader, DataLoader]:
         normalize=config.normalize,
     )
     val_img_transform = Img_ValTransform(
-        size=config.size, use_ccrop=config.use_ccrop
+        size=config.size,
+        use_ccrop=config.use_ccrop,
+        dataset=config.dataset,
     )
     audio_max_sec = (
         config.val_max_sec_f
