@@ -1,5 +1,6 @@
 import io
 import random
+from pathlib import Path
 from typing import Callable, Optional
 
 import soundfile as sf
@@ -19,6 +20,8 @@ class FlickrAudioImageDataset(Dataset):
         max_pairs: Optional[int] = None,
         sample_seed: int = 123,
         val_fraction: float = 0.2,
+        audio_only: bool = False,
+        audio_embedding_cache: Optional[Path] = None,
     ) -> None:
         if split not in {"train", "val"}:
             raise ValueError("split must be 'train' or 'val'")
@@ -30,6 +33,20 @@ class FlickrAudioImageDataset(Dataset):
         self.img_transform = img_transform
         self.audio_transform = audio_transform
         self.sample_rate = sample_rate
+        self.audio_only = audio_only
+        self.audio_embedding_cache = audio_embedding_cache
+        self.cached_audio_embeddings: dict[str, torch.Tensor] = {}
+        if audio_embedding_cache is not None:
+            if not audio_embedding_cache.is_file():
+                raise FileNotFoundError(
+                    f"Audio embedding cache not found: {audio_embedding_cache}"
+                )
+            cache = torch.load(audio_embedding_cache, map_location="cpu")
+            if not isinstance(cache, dict) or "embeddings" not in cache:
+                raise ValueError(
+                    f"Invalid audio embedding cache format: {audio_embedding_cache}"
+                )
+            self.cached_audio_embeddings = cache["embeddings"]
 
         audio_dataset = load_dataset(
             "deep9539/flickr-audio-image", "audio", split="train"
@@ -87,34 +104,45 @@ class FlickrAudioImageDataset(Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> tuple[torch.Tensor, torch.Tensor, int, str, int]:
+    ) -> tuple[torch.Tensor, torch.Tensor, int, str, int] | tuple[
+        torch.Tensor, int, str
+    ]:
         audio_index, image_id, _ = self.data[idx]
+        audio_id = self.data[idx][2]
+        cached_audio = self.cached_audio_embeddings.get(audio_id)
+        if cached_audio is not None:
+            audio = cached_audio
+            length = -1
+        else:
+            audio_record = self._audio_dataset[audio_index]["audio"]
+            audio_source = audio_record["bytes"]
+            if audio_source is None:
+                audio_source = audio_record["path"]
+                audio, sampling_rate = sf.read(
+                    audio_source, dtype="float32", always_2d=True
+                )
+            else:
+                audio, sampling_rate = sf.read(
+                    io.BytesIO(audio_source), dtype="float32", always_2d=True
+                )
+            if sampling_rate != self.sample_rate:
+                raise ValueError(
+                    f"Unexpected sample rate {sampling_rate} "
+                    f"for audio id {audio_id!r}"
+                )
+            audio = torch.from_numpy(audio.mean(axis=1))
+            if self.audio_transform is not None:
+                audio, length = self.audio_transform(audio)
+            else:
+                length = audio.shape[-1]
+
+        if self.audio_only:
+            return audio, length, audio_id
+
         image_record = self._image_dataset[self._image_by_id[image_id]]
         img = pil_to_tensor(image_record["image"]).float() / 255.0
         if self.img_transform is not None:
             img = self.img_transform(img)
-
-        audio_record = self._audio_dataset[audio_index]["audio"]
-        audio_source = audio_record["bytes"]
-        if audio_source is None:
-            audio_source = audio_record["path"]
-            audio, sampling_rate = sf.read(
-                audio_source, dtype="float32", always_2d=True
-            )
-        else:
-            audio, sampling_rate = sf.read(
-                io.BytesIO(audio_source), dtype="float32", always_2d=True
-            )
-        if sampling_rate != self.sample_rate:
-            raise ValueError(
-                f"Unexpected sample rate {sampling_rate} "
-                f"for audio id {self.data[idx][2]!r}"
-            )
-        audio = torch.from_numpy(audio.mean(axis=1))
-        if self.audio_transform is not None:
-            audio, length = self.audio_transform(audio)
-        else:
-            length = audio.shape[-1]
 
         return (
             img,
