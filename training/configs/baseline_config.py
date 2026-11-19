@@ -28,6 +28,9 @@ class Config:
 
     # Optimizer
     lr: float = 1e-4
+    audio_backbone_lr: Optional[float] = None
+    visual_backbone_lr: Optional[float] = None
+    projection_lr: Optional[float] = None
     weight_decay: float = 0.05
     adam_beta1: float = 0.9
     adam_beta2: float = 0.98

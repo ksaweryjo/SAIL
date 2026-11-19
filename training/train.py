@@ -3,6 +3,7 @@ import importlib
 from dataclasses import asdict
 from itertools import chain
 from pathlib import Path
+from typing import TypedDict
 
 import torch
 import wandb
@@ -111,27 +112,68 @@ def build_criterion(config: Config) -> InfoNCE_Loss:
     return criterion
 
 
+class OptimizerGroup(TypedDict):
+    decay: list[torch.nn.Parameter]
+    no_decay: list[torch.nn.Parameter]
+    lr: float
+
+
 def build_optimizer(
     config: Config, model: ContrastiveModel, criterion: InfoNCE_Loss
 ) -> torch.optim.Optimizer:
-    decay, no_decay = [], []
+    parameter_groups: dict[str, OptimizerGroup] = {}
     for name, param in chain(model.named_parameters(), criterion.named_parameters()):
         if not param.requires_grad:
             continue
-        if param.ndim <= 1 or name.endswith(".bias"):
-            no_decay.append(param)
+        if name.startswith("audio_encoder."):
+            group_name = "audio_backbone"
+            lr = (
+                config.audio_backbone_lr
+                if config.audio_backbone_lr is not None
+                else config.lr
+            )
+        elif name.startswith("visual_encoder."):
+            group_name = "visual_backbone"
+            lr = (
+                config.visual_backbone_lr
+                if config.visual_backbone_lr is not None
+                else config.lr
+            )
         else:
-            decay.append(param)
+            group_name = "head"
+            lr = config.projection_lr if config.projection_lr is not None else config.lr
 
+        group = parameter_groups.setdefault(
+            group_name,
+            {"decay": [], "no_decay": [], "lr": lr},
+        )
+        if param.ndim <= 1 or name.endswith(".bias"):
+            group["no_decay"].append(param)
+        else:
+            group["decay"].append(param)
+
+    params = []
+    for group in parameter_groups.values():
+        if group["decay"]:
+            params.append(
+                {
+                    "params": group["decay"],
+                    "lr": group["lr"],
+                    "weight_decay": config.weight_decay,
+                }
+            )
+        if group["no_decay"]:
+            params.append(
+                {
+                    "params": group["no_decay"],
+                    "lr": group["lr"],
+                    "weight_decay": 0.0,
+                }
+            )
     optimizer = torch.optim.AdamW(
-        lr=config.lr,
         betas=(config.adam_beta1, config.adam_beta2),
         eps=config.adam_eps,
-        weight_decay=config.weight_decay,
-        params=[
-            {"params": decay, "weight_decay": config.weight_decay},
-            {"params": no_decay, "weight_decay": 0.0},
-        ],
+        params=params,
     )
     return optimizer
 

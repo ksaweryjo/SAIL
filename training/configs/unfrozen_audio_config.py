@@ -12,6 +12,8 @@ class Config(Baseline):
     
     # Experiment parameters
     freeze_audio_backbone: bool = False
+    audio_backbone_lr: float = 5e-6
+    projection_lr: float = 1e-4
     
     # "best" model from previous experiment groups
     loss_type: str = "multi_positive"
